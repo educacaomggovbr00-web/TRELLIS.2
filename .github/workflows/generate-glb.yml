@@ -21,6 +21,11 @@ on:
         required: true
         default: "0"
         type: string
+      polygon_target:
+        description: "Target face count for game-ready GLB"
+        required: true
+        default: "10000"
+        type: string
   push:
     branches:
       - main
@@ -56,20 +61,22 @@ jobs:
           DISPATCH_IMAGE: ${{ inputs.image_path }}
           DISPATCH_RESOLUTION: ${{ inputs.resolution }}
           DISPATCH_SEED: ${{ inputs.seed }}
+          DISPATCH_POLYGON_TARGET: ${{ inputs.polygon_target }}
         shell: bash
         run: |
           set -euo pipefail
           IMAGE_PATH="${DISPATCH_IMAGE:-workflow_inputs/naruto_reference.jpg}"
           RESOLUTION="${DISPATCH_RESOLUTION:-512}"
           SEED="${DISPATCH_SEED:-0}"
+          POLYGON_TARGET="${DISPATCH_POLYGON_TARGET:-10000}"
 
           python tools/trellis_space_generate.py \
             --image "$IMAGE_PATH" \
             --output "out/naruto_trellis.glb" \
             --resolution "$RESOLUTION" \
             --seed "$SEED" \
-            --decimation-target 250000 \
-            --texture-size 2048
+            --decimation-target "$POLYGON_TARGET" \
+            --texture-size 1024
 
       - name: Verify GLB
         shell: bash
