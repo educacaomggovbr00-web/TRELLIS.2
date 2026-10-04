@@ -52,8 +52,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install lightweight client
-        run: python -m pip install --upgrade gradio_client pillow
+      - name: Install lightweight client and GLB optimizer
+        run: |
+          python -m pip install --upgrade gradio_client pillow
+          npm install --global @gltf-transform/cli
 
       - name: Generate GLB through Microsoft TRELLIS.2 Space
         env:
@@ -72,11 +74,33 @@ jobs:
 
           python tools/trellis_space_generate.py \
             --image "$IMAGE_PATH" \
-            --output "out/naruto_trellis.glb" \
+            --output "out/naruto_trellis_raw.glb" \
             --resolution "$RESOLUTION" \
             --seed "$SEED" \
-            --decimation-target "$POLYGON_TARGET" \
+            --decimation-target 100000 \
             --texture-size 1024
+
+      - name: Reduce GLB to game-ready polygon target
+        env:
+          DISPATCH_POLYGON_TARGET: ${{ inputs.polygon_target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TARGET="${DISPATCH_POLYGON_TARGET:-10000}"
+          RAW_FACES="$(python tools/glb_triangle_count.py out/naruto_trellis_raw.glb)"
+          RATIO="$(python -c 'import sys; t=float(sys.argv[1]); r=float(sys.argv[2]); print(max(0.01, min(1.0, t / r)))' "$TARGET" "$RAW_FACES")"
+          echo "Raw GLB: $RAW_FACES triangles"
+          echo "Requested target: $TARGET triangles"
+          echo "Simplification ratio: $RATIO"
+
+          gltf-transform simplify \
+            out/naruto_trellis_raw.glb \
+            out/naruto_trellis.glb \
+            --ratio "$RATIO" \
+            --error 1
+
+          FINAL_FACES="$(python tools/glb_triangle_count.py out/naruto_trellis.glb)"
+          echo "Final GLB: $FINAL_FACES triangles"
 
       - name: Verify GLB
         shell: bash
