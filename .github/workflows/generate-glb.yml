@@ -1,0 +1,103 @@
+name: Generate GLB with TRELLIS.2
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_path:
+        description: "Repository image to convert"
+        required: true
+        default: "workflow_inputs/naruto_reference.jpg"
+        type: string
+      resolution:
+        description: "TRELLIS.2 generation resolution"
+        required: true
+        default: "512"
+        type: choice
+        options:
+          - "512"
+          - "1024"
+      seed:
+        description: "Generation seed"
+        required: true
+        default: "0"
+        type: string
+  push:
+    branches:
+      - main
+    paths:
+      - "workflow_inputs/naruto_reference.jpg"
+      - "tools/trellis_space_generate.py"
+      - ".github/workflows/generate-glb.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    name: Image to GLB
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install lightweight client
+        run: python -m pip install --upgrade gradio_client pillow
+
+      - name: Generate GLB through Microsoft TRELLIS.2 Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DISPATCH_IMAGE: ${{ inputs.image_path }}
+          DISPATCH_RESOLUTION: ${{ inputs.resolution }}
+          DISPATCH_SEED: ${{ inputs.seed }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE_PATH="${DISPATCH_IMAGE:-workflow_inputs/naruto_reference.jpg}"
+          RESOLUTION="${DISPATCH_RESOLUTION:-512}"
+          SEED="${DISPATCH_SEED:-0}"
+
+          python tools/trellis_space_generate.py \
+            --image "$IMAGE_PATH" \
+            --output "out/naruto_trellis.glb" \
+            --resolution "$RESOLUTION" \
+            --seed "$SEED" \
+            --decimation-target 250000 \
+            --texture-size 2048
+
+      - name: Verify GLB
+        shell: bash
+        run: |
+          test -s out/naruto_trellis.glb
+          python - <<'PY'
+          from pathlib import Path
+          p = Path("out/naruto_trellis.glb")
+          data = p.read_bytes()[:12]
+          assert data[:4] == b"glTF", f"Invalid GLB magic: {data[:4]!r}"
+          print(f"Verified {p}: {p.stat().st_size} bytes")
+          PY
+
+      - name: Upload generated GLB
+        uses: actions/upload-artifact@v4
+        with:
+          name: naruto-trellis-glb
+          path: |
+            out/naruto_trellis.glb
+            out/space_api.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload debug files on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trellis-debug
+          path: out/
+          if-no-files-found: warn
+          retention-days: 3
